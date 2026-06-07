@@ -1,4 +1,5 @@
 import os
+import posixpath
 import boto3
 from .logger import logger
 from botocore.exceptions import NoCredentialsError
@@ -6,6 +7,16 @@ from botocore.config import Config
 
 from dotenv import load_dotenv
 load_dotenv()
+
+
+def normalize_s3_key(*parts):
+    clean_parts = []
+    for part in parts:
+        if part:
+            clean_parts.append(str(part).replace("\\", "/").strip("/"))
+    if not clean_parts:
+        return ""
+    return posixpath.join(*clean_parts)
 
 
 class S3:
@@ -53,6 +64,7 @@ class S3:
             logger.error(err)
 
     def get_files(self, prefix):
+        prefix = normalize_s3_key(prefix)
         if self.does_folder_exist(prefix):
             try:
                 bucket = self.s3_client.Bucket(self.bucket_name)
@@ -66,6 +78,7 @@ class S3:
             return []
     
     def does_folder_exist(self, folder_name):
+        folder_name = normalize_s3_key(folder_name)
         try:
             bucket = self.s3_client.Bucket(self.bucket_name)
             response = bucket.objects.filter(Prefix=folder_name)
@@ -75,6 +88,7 @@ class S3:
             logger.error(err)
     
     def create_folder(self, folder_name):
+        folder_name = normalize_s3_key(folder_name)
         try:
             bucket = self.s3_client.Bucket(self.bucket_name)
             bucket.put_object(Key=f"{folder_name}/")
@@ -83,6 +97,7 @@ class S3:
             logger.error(err)
     
     def download_file(self, s3_path, local_path):
+        s3_path = normalize_s3_key(s3_path)
         local_dir = os.path.dirname(local_path)
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
@@ -98,6 +113,7 @@ class S3:
             logger.error(err)
 
     def upload_file(self, local_path, s3_path):
+        s3_path = normalize_s3_key(s3_path)
         try:
             bucket = self.s3_client.Bucket(self.bucket_name)
             bucket.upload_file(local_path, s3_path)
@@ -125,10 +141,11 @@ class S3:
             return input
 
         filename_prefix = compute_vars(filename_prefix, image_width, image_height)
-        subfolder = os.path.dirname(os.path.normpath(filename_prefix))
-        filename = os.path.basename(os.path.normpath(filename_prefix))
+        normalized_filename_prefix = filename_prefix.replace("\\", "/")
+        subfolder = posixpath.dirname(posixpath.normpath(normalized_filename_prefix))
+        filename = posixpath.basename(posixpath.normpath(normalized_filename_prefix))
         
-        full_output_folder_s3 = os.path.join(self.output_dir, subfolder)
+        full_output_folder_s3 = normalize_s3_key(self.output_dir, subfolder)
         
         # Check if the output folder exists, create it if it doesn't
         if not self.does_folder_exist(full_output_folder_s3):
